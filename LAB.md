@@ -2,58 +2,86 @@
 
 ## מטרה
 
-במעבדה זו תכתבו workflow ב-GitHub Actions שמדגים שימוש מתקדם ב-events ו-triggers.
-תלמדו כיצד לשלוט בדיוק *מתי* ו-*על מה* ה-pipeline שלכם יופעל — לפי branch, לפי path, לפי סוג האירוע, ועוד.
+במעבדה זו תרחיבו את ה-workflow שבניתם במעבדה 4 ותהפכו אותו ל-pipeline חכם ומדויק.
+תלמדו לשלוט בדיוק *מתי* הוא יופעל, *על איזה קוד*, ו*איך לעצור אותו*.
 
-בסיום המעבדה, ה-workflow שלכם יתמוך ב:
-- הפעלה אוטומטית על push ועל pull_request עם סינון מדויק
-- הפעלה ידנית עם `workflow_dispatch`
-- ביטול ריצות מקבילות (`concurrency`)
-- דילוג על ריצות עם `[skip ci]`
-- matrix של גרסאות Node.js
+נושאים שיכוסו:
+- **Activity Types** — איזה סוג של אירוע מפעיל את ה-workflow
+- **workflow_dispatch** — הפעלה ידנית עם inputs
+- **Event Filters** — סינון לפי branches ו-paths
+- **Skip CI** — דילוג על ריצה עם מילת מפתח ב-commit message
+- **עצירת ריצות** — ביטול ריצות מקבילות ועצירה ידנית
+
+---
+
+## מה יש לכם
+
+### הפרויקט
+
+מערכת עיבוד הזמנות (Order Processing Service) — Node.js עם שני מודולים עיקריים:
+
+```
+src/
+  order.js      — יצירת הזמנה, עדכון סטטוס (pending → approved/rejected/shipped), בדיקת אפשרות משלוח
+  pricing.js    — חישוב מחיר סופי עם הנחות (הזמנה גדולה / לקוח פרמיום / שניהם)
+  validator.js  — ולידציה של שדות ההזמנה
+tests/
+  order.test.js
+  pricing.test.js
+```
+
+הרצה מקומית:
+```bash
+npm install
+npm run lint   # ESLint על src/
+npm test       # Jest + coverage
+```
+
+### ה-Workflow הקיים (מעבדה 4)
+
+קובץ `.github/workflows/ci.yml` כבר קיים ב-repo עם:
+- **lint** job — בודק סגנון קוד
+- **test** job — מריץ בדיקות (`needs: [lint]`)
+- **summary** job — מדפיס תוצאות (`needs: [lint, test]`, `if: always()`)
+
+ה-trigger הנוכחי הוא פשוט מאוד:
+```yaml
+on:
+  push:
+  pull_request:
+```
+
+**משימתכם**: לשדרג את ה-`on:` block ולהוסיף יכולות מתקדמות.
 
 ---
 
 ## רקע תיאורטי
 
-### push event
+### 1. Activity Types
 
-האירוע `push` מופעל כאשר קוד נדחף (push) ל-repository.  
-ניתן לסנן לפי branches ו-paths:
+לאירועים מסוימים יש **סוגי פעילות** שאפשר לסנן לפיהם.  
+לדוגמה, `pull_request` יכול להיות: `opened`, `closed`, `synchronize`, `reopened` ועוד.
 
-```yaml
-on:
-  push:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'src/**'
-      - 'tests/**'
-```
-
-> **שימו לב:** אם `paths` מוגדר — הריצה תופעל **רק** אם לפחות קובץ אחד מהנתיבים שצוינו השתנה.
-
----
-
-### pull_request event
-
-האירוע `pull_request` מופעל בעת פתיחת PR, עדכון שלו, או sync.  
-ניתן לסנן לפי ה-branch שאליו מכוון ה-PR (`base branch`):
+ברירת המחדל (בלי `types:`) מפעילה על `opened`, `synchronize`, `reopened`.  
+עם `types:` אפשר לדייק:
 
 ```yaml
 on:
   pull_request:
-    branches:
-      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 ```
+
+> **מתי משתמשים?** כשרוצים להפעיל workflow רק בפתיחת PR, לא בכל עדכון.
 
 ---
 
-### workflow_dispatch event
+### 2. workflow_dispatch
 
-מאפשר הפעלה ידנית של ה-workflow דרך ה-UI של GitHub או דרך ה-API.  
-ניתן להוסיף `inputs` שהמשתמש ממלא לפני ההפעלה:
+מאפשר הפעלה ידנית מה-UI של GitHub (או דרך API / gh CLI).  
+ניתן להגדיר `inputs` שהמשתמש ממלא לפני ההפעלה:
 
 ```yaml
 on:
@@ -63,25 +91,78 @@ on:
         description: 'Target environment'
         required: true
         default: 'staging'
+      skip_tests:
+        description: 'Skip test job? (true / false)'
+        required: false
+        default: 'false'
 ```
 
----
+גישה ל-input בתוך step:
+```yaml
+run: echo "Deploying to ${{ github.event.inputs.environment }}"
+```
 
-### סינון לפי branches ו-paths
-
-| סינון | מה הוא עושה |
-|-------|------------|
-| `branches` | מגביל ל-branches ספציפיים בלבד |
-| `branches-ignore` | מוציא branches ספציפיים |
-| `paths` | מפעיל רק אם קבצים בנתיב זה השתנו |
-| `paths-ignore` | מדלג אם רק קבצים אלו השתנו |
+> **הפעלה ידנית:**  
+> GitHub UI → Actions → בחרו workflow → "Run workflow"
 
 ---
 
-### concurrency וביטול ריצות
+### 3. Event Filters — branches ו-paths
 
-`concurrency` מאפשר לשלוט בריצות מקבילות של אותו workflow.  
-שימוש ב-`cancel-in-progress: true` מבטל ריצה ישנה כשמגיעה חדשה:
+#### Branch Filter
+
+מגביל את הטריגר ל-branches ספציפיים:
+
+```yaml
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'   # glob pattern
+```
+
+#### Path Filter
+
+מפעיל את ה-workflow **רק** אם לפחות קובץ אחד מהנתיב שצוין השתנה:
+
+```yaml
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+```
+
+> **שימוש משולב:** branches + paths — שניהם חייבים להתקיים כדי שה-workflow יופעל.
+
+**בדיקה:** שנו קובץ ב-`README.md` בלבד ← ה-workflow **לא** יופעל (path filter).  
+שנו קובץ ב-`src/` על branch שאינו ברשימה ← ה-workflow **לא** יופעל (branch filter).
+
+---
+
+### 4. דילוג על ריצות — [skip ci]
+
+GitHub מזהה מילות מפתח בהודעת ה-commit:
+
+| מילת מפתח | אפקט |
+|-----------|------|
+| `[skip ci]` | מדלג על כל workflows |
+| `[ci skip]` | זהה |
+| `[no ci]` | זהה |
+| `[skip actions]` | מדלג רק על GitHub Actions |
+
+```bash
+git commit -m "fix: update README typo [skip ci]"
+```
+
+> **מגבלה:** עובד רק על `push` ו-`pull_request`. לא עובד על `workflow_dispatch`.
+
+---
+
+### 5. עצירת ריצות — Concurrency
+
+#### ביטול ריצות מקבילות
 
 ```yaml
 concurrency:
@@ -89,107 +170,112 @@ concurrency:
   cancel-in-progress: true
 ```
 
----
+- `group`: זיהוי ייחודי — כל שני workflows על אותו branch = אותה group
+- `cancel-in-progress: true`: ריצה חדשה **מבטלת** ריצה ישנה על אותה group
 
-### דילוג על ריצות עם [skip ci]
+#### עצירה ידנית
 
-GitHub מזהה אוטומטית את המחרוזת `[skip ci]` (או `[ci skip]`) בהודעת ה-commit.  
-אם היא קיימת, ה-workflow **לא יופעל כלל** — גם אם ה-trigger אחר אמור לפעול.
+GitHub UI → Actions → לחצו על הריצה הרצויה → "Cancel workflow"
 
+גם דרך CLI:
 ```bash
-git commit -m "fix typo in README [skip ci]"
+gh run cancel <run-id>
 ```
-
----
-
-## מה יש לכם
-
-פרויקט Node.js פשוט עם:
-
-```
-src/
-  calculator.js   — פונקציות: add, subtract, multiply, divide
-  validator.js    — עזרי ולידציה: isNumber, isNonZero
-tests/
-  calculator.test.js  — בדיקות Jest לכל הפונקציות
-package.json        — "test": "jest"
-```
-
-הרצה מקומית:
-
-```bash
-npm install
-npm test
-```
-
-כל הבדיקות אמורות לעבור ✅
 
 ---
 
 ## הוראות המעבדה
 
-1. **צרו את תיקיית ה-workflow:**
-   ```
-   .github/workflows/ci.yml
-   ```
+פתחו את `.github/workflows/ci.yml` ובצעו את השינויים הבאים:
 
-2. **הגדירו את ה-triggers** — ה-workflow יופעל על:
-   - `push` ל-`main` ו-`develop` בלבד
-   - `pull_request` שמכוון ל-`main`
-   - `workflow_dispatch` עם input בשם `environment`
-   
-3. **הוסיפו סינון paths** — הפעילו את ה-workflow רק כשקבצים ב-`src/**` או `tests/**` השתנו
+### שלב 1 — שדרגו את ה-`on:` block
 
-4. **הוסיפו concurrency** — בטלו ריצות ישנות כשמגיעה ריצה חדשה על אותו branch
+החליפו את:
+```yaml
+on:
+  push:
+  pull_request:
+```
 
-5. **הגדירו job עם matrix** על גרסאות Node.js 18 ו-20
+ב-trigger מתקדם שכולל:
+- `push` — רק ל-`main` ו-`develop`, רק כשקבצים ב-`src/**` או `tests/**` השתנו
+- `pull_request` — רק כלפי `main`, עם `types: [opened, synchronize, reopened]`, אותו path filter
+- `workflow_dispatch` — עם שני inputs: `environment` (required, default: `staging`) ו-`skip_tests` (default: `false`)
 
-6. **ב-steps של ה-job:**
-   - Checkout קוד
-   - Setup Node.js (עם הגרסה מה-matrix)
-   - `npm ci`
-   - `npm test`
+### שלב 2 — הוסיפו concurrency
 
-7. **בדקו skip CI** — צרו commit עם `[skip ci]` בהודעה ווידאו שה-workflow לא הופעל
+מתחת ל-`on:` block, הוסיפו:
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+### שלב 3 — הוסיפו matrix ל-test job
+
+שנו את ה-`test` job להריץ על Node.js 18 ו-20 במקביל.  
+אל תשכחו `fail-fast: false`.
+
+### שלב 4 — הוסיפו תנאי ל-test job
+
+הוסיפו `if:` שמדלג על ה-test job אם `skip_tests` הוגדר כ-`true`:
+```yaml
+if: ${{ github.event.inputs.skip_tests != 'true' }}
+```
+
+### שלב 5 — הדפיסו את ה-environment ב-summary job
+
+ב-`summary` job, הוסיפו לפקודה:
+```yaml
+echo "Environment: ${{ github.event.inputs.environment || 'N/A' }}"
+```
+
+### שלב 6 — בדקו את הסינונים
+
+1. **Path filter:** עשו commit לקובץ `README.md` בלבד ← ה-workflow **לא** אמור לרוץ
+2. **Skip CI:** עשו commit עם `[skip ci]` בהודעה ← ה-workflow **לא** אמור לרוץ
+3. **workflow_dispatch:** הפעילו ידנית מה-UI עם `skip_tests=true` ← ה-test job **לא** אמור לרוץ
+4. **ביטול:** הפעילו שתי ריצות מהירות ← הראשונה תתבטל
 
 ---
 
 ## קריטריוני הצלחה
 
-ה-workflow שתכתבו חייב לעמוד בכל הדרישות הבאות:
+ה-workflow שתשדרגו חייב לעמוד בכל הדרישות הבאות:
 
-- [ ] מופעל על `push` ל-`main` ו-`develop` בלבד (branch filter)
-- [ ] מופעל על `pull_request` שמכוון ל-`main`
-- [ ] מכיל `workflow_dispatch` עם input בשם `environment` (required, default: `staging`)
-- [ ] מסנן paths — מופעל רק כשקבצים ב-`src/**` או `tests/**` השתנו
-- [ ] משתמש ב-`actions/setup-node@v4` (גרסה pinned)
-- [ ] מריץ `npm ci` ואז `npm test`
-- [ ] מגדיר `concurrency` עם `cancel-in-progress: true`
-- [ ] commit עם `[skip ci]` — ה-workflow לא מופעל
-- [ ] matrix של Node.js גרסאות 18 ו-20
+- [ ] `push` מופעל רק ל-`main` ו-`develop` (branch filter)
+- [ ] `pull_request` עם `types: [opened, synchronize, reopened]` כלפי `main`
+- [ ] `workflow_dispatch` עם inputs: `environment` (required) ו-`skip_tests`
+- [ ] Path filter על שני האירועים — רק `src/**` ו-`tests/**`
+- [ ] `concurrency` עם `cancel-in-progress: true`
+- [ ] `test` job רץ על matrix Node.js 18 + 20
+- [ ] `test` job מדלג כש-`skip_tests=true`
+- [ ] commit עם `[skip ci]` — ה-workflow לא רץ כלל
+- [ ] `summary` job מדפיס את ה-`environment`
 
 ---
 
 ## רמזים (Hints)
 
-**Hint 1 — מבנה ה-`on:` block:**  
-אפשר לרשום מספר events תחת `on:`. לכל event יכולים להיות filters שונים. בדקו אם `paths` תחת `push` ו-`pull_request` יכולים להיות זהים.
+**Hint 1 — מבנה `on:` עם מספר אירועים:**  
+כל event הוא key עצמאי תחת `on:`. לכל אחד יכולים להיות `branches:`, `types:`, `paths:` משלו. `workflow_dispatch` לא תומך ב-`paths`.
 
-**Hint 2 — concurrency group:**  
-שדה `group` צריך לזהות ריצות על אותו branch. השתמשו ב-`github.workflow` ו-`github.ref` — `${{ github.workflow }}-${{ github.ref }}` נותן מזהה ייחודי לכל workflow+branch.
+**Hint 2 — `concurrency` group:**  
+`github.workflow` = שם ה-workflow, `github.ref` = branch reference (כולל `refs/heads/`). יחד מהווים מפתח ייחודי לכל branch.
 
-**Hint 3 — matrix + setup-node:**  
-כשמגדירים matrix, ניתן לגשת לערך הנוכחי בתוך step בעזרת `${{ matrix.<name> }}`. העבירו את גרסת Node.js ל-`actions/setup-node@v4` דרך `with.node-version`.
+**Hint 3 — matrix + needs:**  
+כש-job מגדיר `strategy.matrix`, הוא מופעל פעמים (job per matrix value). הוסיפו `fail-fast: false` כדי לראות תוצאות כל הגרסאות גם אם אחת נכשלת.
 
-**Hint 4 — npm ci vs npm install:**  
-`npm ci` דורש קובץ `package-lock.json`. אם הוא לא קיים ב-repo, צרו אותו מקומית עם `npm install` ועשו commit.
+**Hint 4 — `if:` על job:**  
+`github.event.inputs` קיים רק בהפעלת `workflow_dispatch`. בהפעלה אחרת הוא ריק. לכן `!= 'true'` יעבוד גם כשה-input לא הוגדר כלל.
 
 ---
 
 ## משאבים
 
-- [GitHub Docs: Events that trigger workflows](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows)
-- [GitHub Docs: Workflow syntax — on](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#on)
-- [GitHub Docs: Using concurrency](https://docs.github.com/en/actions/using-jobs/using-concurrency)
-- [actions/setup-node](https://github.com/actions/setup-node)
+- [Events that trigger workflows](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows)
+- [pull_request activity types](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request)
+- [workflow_dispatch](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_dispatch)
+- [Using concurrency](https://docs.github.com/en/actions/using-jobs/using-concurrency)
 - [Skipping workflow runs](https://docs.github.com/en/actions/managing-workflow-runs/skipping-workflow-runs)
+- [Canceling a workflow](https://docs.github.com/en/actions/managing-workflow-runs/canceling-a-workflow)
