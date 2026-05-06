@@ -1,0 +1,11 @@
+{
+  "name": "lab05-events-triggering",
+  "version": "1.0.0",
+  "description": "Starter project for GitHub Actions Events & Triggers lab",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  }
+}
