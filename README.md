@@ -4,7 +4,7 @@ REST API for managing orders, built with **Express + TypeScript**. Orders are ke
 in memory (state resets on restart).
 
 ## Stack
-
+ somthing 
 - Node.js >= 18, TypeScript 5
 - Express 4
 - Jest + ts-jest + supertest (unit + API tests)
