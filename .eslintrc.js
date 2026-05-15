@@ -1,16 +1,12 @@
 module.exports = {
-  env: {
-    node: true,
-    es2021: true,
-    jest: true,
-  },
-  extends: 'eslint:recommended',
-  parserOptions: {
-    ecmaVersion: 'latest',
-  },
+  root: true,
+  parser: '@typescript-eslint/parser',
+  parserOptions: { ecmaVersion: 2021, sourceType: 'module' },
+  plugins: ['@typescript-eslint'],
+  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
+  env: { node: true, es2021: true, jest: true },
+  ignorePatterns: ['dist/', 'node_modules/', 'coverage/'],
   rules: {
-    'no-unused-vars': 'error',
-    'no-console': 'warn',
-    eqeqeq: 'error',
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
   },
 };

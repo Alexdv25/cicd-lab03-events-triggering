@@ -1,69 +1,115 @@
-# מעבדה 5: Events ו-Triggers מתקדמים ב-GitHub Actions
+# Lab: Practicing GitHub Actions Triggers
 
-## מטרה
+## Goal
 
-במעבדה זו תרחיבו את ה-workflow שבניתם במעבדה 4 ותהפכו אותו ל-pipeline חכם ומדויק.
-תלמדו לשלוט בדיוק *מתי* הוא יופעל, *על איזה קוד*, ו*איך לעצור אותו*.
+In this lab you will take an existing CI workflow that runs on **every** push and
+**every** pull request, and make it *precise*. You will learn to control exactly
+*when* and *on what* your pipeline runs — by branch, by changed path, and by
+pull-request activity type.
 
-נושאים שיכוסו:
-- **Activity Types** — איזה סוג של אירוע מפעיל את ה-workflow
-- **workflow_dispatch** — הפעלה ידנית עם inputs
-- **Event Filters** — סינון לפי branches ו-paths
-- **Skip CI** — דילוג על ריצה עם מילת מפתח ב-commit message
-- **עצירת ריצות** — ביטול ריצות מקבילות ועצירה ידנית
+By the end, your workflow will:
+
+- Run on `push` only to specific branches **and** only when relevant files changed
+- Run on `pull_request` only against specific branches and only for specific
+  activity types
+
+This lab focuses purely on the `on:` block. You do **not** change the jobs.
 
 ---
 
-## מה יש לכם
+## What you have
 
-### הפרויקט
-
-מערכת עיבוד הזמנות (Order Processing Service) — Node.js עם שני מודולים עיקריים:
+A real Node.js + TypeScript order-management REST API (Express). It is already a
+working project with a green baseline.
 
 ```
 src/
-  order.js      — יצירת הזמנה, עדכון סטטוס (pending → approved/rejected/shipped), בדיקת אפשרות משלוח
-  pricing.js    — חישוב מחיר סופי עם הנחות (הזמנה גדולה / לקוח פרמיום / שניהם)
-  validator.js  — ולידציה של שדות ההזמנה
-tests/
-  order.test.js
-  pricing.test.js
+  domain/        order, pricing, validator, types (business rules)
+  repositories/  in-memory order store
+  services/      order use cases
+  api/           Express routes + error middleware
+  config/        environment config
+  app.ts         app factory
+  server.ts      entrypoint
+tests/           unit + API tests (Jest + supertest)
+.github/
+  workflows/
+    ci.yml       the workflow you will upgrade
 ```
 
-הרצה מקומית:
+Run it locally:
+
 ```bash
 npm install
-npm run lint   # ESLint על src/
-npm test       # Jest + coverage
+npm run lint       # ESLint over src/
+npm run typecheck  # tsc --noEmit
+npm run build      # compile to dist/
+npm test           # Jest + coverage
 ```
 
-### ה-Workflow הקיים (מעבדה 4)
+### The existing workflow
 
-קובץ `.github/workflows/ci.yml` כבר קיים ב-repo עם:
-- **lint** job — בודק סגנון קוד
-- **test** job — מריץ בדיקות (`needs: [lint]`)
-- **summary** job — מדפיס תוצאות (`needs: [lint, test]`, `if: always()`)
+`.github/workflows/ci.yml` already has three jobs — `lint`, `test` (Node 18 + 20
+matrix), and `summary`. **Leave the jobs alone.** The current trigger is the
+naive one:
 
-ה-trigger הנוכחי הוא פשוט מאוד:
 ```yaml
 on:
   push:
   pull_request:
 ```
 
-**משימתכם**: לשדרג את ה-`on:` block ולהוסיף יכולות מתקדמות.
+Your task: replace that block with a precise one.
 
 ---
 
-## רקע תיאורטי
+## Background
 
-### 1. Activity Types
+### `push` event — branches and paths
 
-לאירועים מסוימים יש **סוגי פעילות** שאפשר לסנן לפיהם.  
-לדוגמה, `pull_request` יכול להיות: `opened`, `closed`, `synchronize`, `reopened` ועוד.
+The `push` event fires when commits are pushed to the repository. You can narrow
+it with `branches:` and `paths:` filters:
 
-ברירת המחדל (בלי `types:`) מפעילה על `opened`, `synchronize`, `reopened`.  
-עם `types:` אפשר לדייק:
+```yaml
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**'
+      - 'tests/**'
+```
+
+> **Important:** when `paths:` is set, the run is triggered **only** if at least
+> one changed file matches one of the listed paths. A push that only touches
+> `README.md` would **not** trigger this workflow.
+
+> Branch and path filters combine with **AND** — the branch must match *and* at
+> least one path must match.
+
+You can also use glob patterns: `'feature/**'` matches every branch under
+`feature/`. And you can *exclude* with `branches-ignore:` / `paths-ignore:` (but
+you cannot use `branches` and `branches-ignore` for the same event at once).
+
+---
+
+### `pull_request` event — branches and activity types
+
+The `pull_request` event fires on pull-request activity. Two useful filters:
+
+**`branches:`** filters by the PR's *base* branch (the branch being merged into):
+
+```yaml
+on:
+  pull_request:
+    branches:
+      - main
+```
+
+**`types:`** filters by *activity type*. A pull request emits many activity
+types — `opened`, `synchronize` (new commits pushed to the PR), `reopened`,
+`closed`, `edited`, `labeled`, and more.
 
 ```yaml
 on:
@@ -74,208 +120,108 @@ on:
       - reopened
 ```
 
-> **מתי משתמשים?** כשרוצים להפעיל workflow רק בפתיחת PR, לא בכל עדכון.
+> **Default behavior:** if you omit `types:`, GitHub uses
+> `[opened, synchronize, reopened]`. Specifying `types:` is how you opt into
+> events the default does not cover (e.g. `closed`), or restrict to fewer.
+
+`pull_request` also supports `paths:` — same semantics as for `push`.
 
 ---
 
-### 2. workflow_dispatch
+### Combining multiple events
 
-מאפשר הפעלה ידנית מה-UI של GitHub (או דרך API / gh CLI).  
-ניתן להגדיר `inputs` שהמשתמש ממלא לפני ההפעלה:
-
-```yaml
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Target environment'
-        required: true
-        default: 'staging'
-      skip_tests:
-        description: 'Skip test job? (true / false)'
-        required: false
-        default: 'false'
-```
-
-גישה ל-input בתוך step:
-```yaml
-run: echo "Deploying to ${{ github.event.inputs.environment }}"
-```
-
-> **הפעלה ידנית:**  
-> GitHub UI → Actions → בחרו workflow → "Run workflow"
-
----
-
-### 3. Event Filters — branches ו-paths
-
-#### Branch Filter
-
-מגביל את הטריגר ל-branches ספציפיים:
+Each event is its own key under `on:`, with its own filters:
 
 ```yaml
 on:
   push:
-    branches:
-      - main
-      - develop
-      - 'feature/**'   # glob pattern
-```
-
-#### Path Filter
-
-מפעיל את ה-workflow **רק** אם לפחות קובץ אחד מהנתיב שצוין השתנה:
-
-```yaml
-on:
-  push:
-    paths:
-      - 'src/**'
-      - 'tests/**'
-```
-
-> **שימוש משולב:** branches + paths — שניהם חייבים להתקיים כדי שה-workflow יופעל.
-
-**בדיקה:** שנו קובץ ב-`README.md` בלבד ← ה-workflow **לא** יופעל (path filter).  
-שנו קובץ ב-`src/` על branch שאינו ברשימה ← ה-workflow **לא** יופעל (branch filter).
-
----
-
-### 4. דילוג על ריצות — [skip ci]
-
-GitHub מזהה מילות מפתח בהודעת ה-commit:
-
-| מילת מפתח | אפקט |
-|-----------|------|
-| `[skip ci]` | מדלג על כל workflows |
-| `[ci skip]` | זהה |
-| `[no ci]` | זהה |
-| `[skip actions]` | מדלג רק על GitHub Actions |
-
-```bash
-git commit -m "fix: update README typo [skip ci]"
-```
-
-> **מגבלה:** עובד רק על `push` ו-`pull_request`. לא עובד על `workflow_dispatch`.
-
----
-
-### 5. עצירת ריצות — Concurrency
-
-#### ביטול ריצות מקבילות
-
-```yaml
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-```
-
-- `group`: זיהוי ייחודי — כל שני workflows על אותו branch = אותה group
-- `cancel-in-progress: true`: ריצה חדשה **מבטלת** ריצה ישנה על אותה group
-
-#### עצירה ידנית
-
-GitHub UI → Actions → לחצו על הריצה הרצויה → "Cancel workflow"
-
-גם דרך CLI:
-```bash
-gh run cancel <run-id>
-```
-
----
-
-## הוראות המעבדה
-
-פתחו את `.github/workflows/ci.yml` ובצעו את השינויים הבאים:
-
-### שלב 1 — שדרגו את ה-`on:` block
-
-החליפו את:
-```yaml
-on:
-  push:
+    branches: [main]
   pull_request:
+    types: [opened]
 ```
 
-ב-trigger מתקדם שכולל:
-- `push` — רק ל-`main` ו-`develop`, רק כשקבצים ב-`src/**` או `tests/**` השתנו
-- `pull_request` — רק כלפי `main`, עם `types: [opened, synchronize, reopened]`, אותו path filter
-- `workflow_dispatch` — עם שני inputs: `environment` (required, default: `staging`) ו-`skip_tests` (default: `false`)
-
-### שלב 2 — הוסיפו concurrency
-
-מתחת ל-`on:` block, הוסיפו:
-```yaml
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-```
-
-### שלב 3 — הוסיפו matrix ל-test job
-
-שנו את ה-`test` job להריץ על Node.js 18 ו-20 במקביל.  
-אל תשכחו `fail-fast: false`.
-
-### שלב 4 — הוסיפו תנאי ל-test job
-
-הוסיפו `if:` שמדלג על ה-test job אם `skip_tests` הוגדר כ-`true`:
-```yaml
-if: ${{ github.event.inputs.skip_tests != 'true' }}
-```
-
-### שלב 5 — הדפיסו את ה-environment ב-summary job
-
-ב-`summary` job, הוסיפו לפקודה:
-```yaml
-echo "Environment: ${{ github.event.inputs.environment || 'N/A' }}"
-```
-
-### שלב 6 — בדקו את הסינונים
-
-1. **Path filter:** עשו commit לקובץ `README.md` בלבד ← ה-workflow **לא** אמור לרוץ
-2. **Skip CI:** עשו commit עם `[skip ci]` בהודעה ← ה-workflow **לא** אמור לרוץ
-3. **workflow_dispatch:** הפעילו ידנית מה-UI עם `skip_tests=true` ← ה-test job **לא** אמור לרוץ
-4. **ביטול:** הפעילו שתי ריצות מהירות ← הראשונה תתבטל
+`push` and `pull_request` filters are independent — `types:` only applies to
+`pull_request`, not to `push`.
 
 ---
 
-## קריטריוני הצלחה
+## Instructions
 
-ה-workflow שתשדרגו חייב לעמוד בכל הדרישות הבאות:
+Open `.github/workflows/ci.yml` and replace the `on:` block (steps 1–3).
+Do not touch the jobs.
 
-- [ ] `push` מופעל רק ל-`main` ו-`develop` (branch filter)
-- [ ] `pull_request` עם `types: [opened, synchronize, reopened]` כלפי `main`
-- [ ] `workflow_dispatch` עם inputs: `environment` (required) ו-`skip_tests`
-- [ ] Path filter על שני האירועים — רק `src/**` ו-`tests/**`
-- [ ] `concurrency` עם `cancel-in-progress: true`
-- [ ] `test` job רץ על matrix Node.js 18 + 20
-- [ ] `test` job מדלג כש-`skip_tests=true`
-- [ ] commit עם `[skip ci]` — ה-workflow לא רץ כלל
-- [ ] `summary` job מדפיס את ה-`environment`
+### Step 1 — Restrict `push`
+
+Make `push` trigger **only** when:
+
+- the pushed branch is `main` **or** `develop`, **and**
+- at least one changed file is under `src/**` or `tests/**`
+
+### Step 2 — Restrict `pull_request`
+
+Make `pull_request` trigger **only** when:
+
+- the PR targets the `main` branch, **and**
+- the activity type is one of `opened`, `synchronize`, or `reopened`
+
+### Step 3 — Keep the jobs unchanged
+
+Confirm `lint`, `test`, and `summary` are exactly as before. This lab is only
+about the `on:` block.
+
+### Step 4 — Prove the filters work
+
+After pushing your change, verify behavior:
+
+1. **Path filter:** commit a change to `README.md` only, on `main` → the
+   workflow should **not** run.
+2. **Branch filter:** push a change under `src/` to a branch that is *not*
+   `main`/`develop` (e.g. `feature/x`) → the workflow should **not** run.
+3. **Valid push:** push a change under `src/` to `main` → the workflow
+   **should** run.
+4. **PR type:** open a PR against `main` → it runs. Add a label to the PR
+   (activity type `labeled`) → it should **not** trigger a new run.
 
 ---
 
-## רמזים (Hints)
+## Acceptance criteria
 
-**Hint 1 — מבנה `on:` עם מספר אירועים:**  
-כל event הוא key עצמאי תחת `on:`. לכל אחד יכולים להיות `branches:`, `types:`, `paths:` משלו. `workflow_dispatch` לא תומך ב-`paths`.
+The `on:` block you write must:
 
-**Hint 2 — `concurrency` group:**  
-`github.workflow` = שם ה-workflow, `github.ref` = branch reference (כולל `refs/heads/`). יחד מהווים מפתח ייחודי לכל branch.
-
-**Hint 3 — matrix + needs:**  
-כש-job מגדיר `strategy.matrix`, הוא מופעל פעמים (job per matrix value). הוסיפו `fail-fast: false` כדי לראות תוצאות כל הגרסאות גם אם אחת נכשלת.
-
-**Hint 4 — `if:` על job:**  
-`github.event.inputs` קיים רק בהפעלת `workflow_dispatch`. בהפעלה אחרת הוא ריק. לכן `!= 'true'` יעבוד גם כשה-input לא הוגדר כלל.
+- [ ] Trigger `push` only on branches `main` and `develop`
+- [ ] Trigger `push` only when files under `src/**` or `tests/**` changed
+- [ ] Trigger `pull_request` only against the `main` base branch
+- [ ] Trigger `pull_request` only for types `opened`, `synchronize`, `reopened`
+- [ ] Leave the `lint`, `test`, and `summary` jobs unchanged
+- [ ] The workflow still passes (lint + typecheck + build + tests green) when it
+      does run
 
 ---
 
-## משאבים
+## Hints
+
+- Every event is an independent key under `on:`. `branches:`, `paths:`, and
+  `types:` are nested *under their event* — `types:` is not valid under `push`.
+- Filters within one event combine with AND: for `push`, the branch **and** a
+  path must both match for the run to fire.
+- A push that changes only `README.md` is the quickest way to confirm your
+  `paths:` filter — if the workflow still runs, the filter is in the wrong place
+  or wrong syntax.
+- The default `pull_request` types are `[opened, synchronize, reopened]`. The
+  lab asks for exactly those — but write `types:` explicitly so the intent is
+  visible and so adding a label does not trigger a run.
+
+---
+
+## Where the workflow goes
+
+Edit the existing file: `.github/workflows/ci.yml`. Do not create a new file.
+
+---
+
+## Resources
 
 - [Events that trigger workflows](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows)
-- [pull_request activity types](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request)
-- [workflow_dispatch](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_dispatch)
-- [Using concurrency](https://docs.github.com/en/actions/using-jobs/using-concurrency)
-- [Skipping workflow runs](https://docs.github.com/en/actions/managing-workflow-runs/skipping-workflow-runs)
-- [Canceling a workflow](https://docs.github.com/en/actions/managing-workflow-runs/canceling-a-workflow)
+- [`push` event](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#push)
+- [`pull_request` activity types](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request)
+- [Filter pattern cheat sheet](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet)

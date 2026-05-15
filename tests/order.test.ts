@@ -1,6 +1,7 @@
-const { createOrder, updateStatus, canShip } = require('../src/order');
+import { createOrder, updateStatus, canShip } from '../src/domain/order';
+import { OrderItem } from '../src/domain/types';
 
-const baseItems = [
+const baseItems: OrderItem[] = [
   { name: 'Widget', price: 50, quantity: 2 },
   { name: 'Gadget', price: 30, quantity: 1 },
 ];
@@ -18,13 +19,13 @@ describe('createOrder', () => {
   });
 
   test('applies large-order discount when amount >= 1000', () => {
-    const items = [{ name: 'BigItem', price: 500, quantity: 3 }];
+    const items: OrderItem[] = [{ name: 'BigItem', price: 500, quantity: 3 }];
     const order = createOrder({ id: 'ORD-003', customerId: 'CUST-1', items });
     expect(order.finalPrice).toBe(1350);
   });
 
   test('throws on missing id', () => {
-    expect(() => createOrder({ customerId: 'CUST-1', items: baseItems })).toThrow();
+    expect(() => createOrder({ customerId: 'CUST-1', items: baseItems } as never)).toThrow();
   });
 
   test('throws on empty items array', () => {
@@ -32,38 +33,35 @@ describe('createOrder', () => {
   });
 
   test('throws on invalid item (non-numeric price)', () => {
-    const badItems = [{ name: 'Bad', price: 'free', quantity: 1 }];
-    expect(() => createOrder({ id: 'ORD-005', customerId: 'CUST-1', items: badItems })).toThrow(TypeError);
+    const badItems = [{ name: 'Bad', price: 'free', quantity: 1 }] as never;
+    expect(() => createOrder({ id: 'ORD-005', customerId: 'CUST-1', items: badItems })).toThrow();
   });
 });
 
 describe('updateStatus', () => {
-  let order;
-  beforeEach(() => {
-    order = createOrder({ id: 'ORD-010', customerId: 'CUST-2', items: baseItems });
+  test('transitions pending -> approved', () => {
+    const order = createOrder({ id: 'ORD-010', customerId: 'CUST-2', items: baseItems });
+    expect(updateStatus(order, 'approved').status).toBe('approved');
   });
 
-  test('transitions pending → approved', () => {
-    const updated = updateStatus(order, 'approved');
-    expect(updated.status).toBe('approved');
+  test('transitions pending -> rejected', () => {
+    const order = createOrder({ id: 'ORD-011', customerId: 'CUST-2', items: baseItems });
+    expect(updateStatus(order, 'rejected').status).toBe('rejected');
   });
 
-  test('transitions pending → rejected', () => {
-    const updated = updateStatus(order, 'rejected');
-    expect(updated.status).toBe('rejected');
-  });
-
-  test('transitions approved → shipped', () => {
+  test('transitions approved -> shipped', () => {
+    const order = createOrder({ id: 'ORD-012', customerId: 'CUST-2', items: baseItems });
     const approved = updateStatus(order, 'approved');
-    const shipped = updateStatus(approved, 'shipped');
-    expect(shipped.status).toBe('shipped');
+    expect(updateStatus(approved, 'shipped').status).toBe('shipped');
   });
 
-  test('throws on invalid transition (pending → shipped)', () => {
+  test('throws on invalid transition (pending -> shipped)', () => {
+    const order = createOrder({ id: 'ORD-013', customerId: 'CUST-2', items: baseItems });
     expect(() => updateStatus(order, 'shipped')).toThrow(/Cannot transition/);
   });
 
-  test('throws on invalid transition (rejected → approved)', () => {
+  test('throws on invalid transition (rejected -> approved)', () => {
+    const order = createOrder({ id: 'ORD-014', customerId: 'CUST-2', items: baseItems });
     const rejected = updateStatus(order, 'rejected');
     expect(() => updateStatus(rejected, 'approved')).toThrow(/Cannot transition/);
   });
@@ -72,8 +70,7 @@ describe('updateStatus', () => {
 describe('canShip', () => {
   test('returns true for approved order', () => {
     const order = createOrder({ id: 'ORD-020', customerId: 'CUST-3', items: baseItems });
-    const approved = updateStatus(order, 'approved');
-    expect(canShip(approved)).toBe(true);
+    expect(canShip(updateStatus(order, 'approved'))).toBe(true);
   });
 
   test('returns false for pending order', () => {

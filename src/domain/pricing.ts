@@ -1,9 +1,9 @@
 const DISCOUNT_THRESHOLD = 1000;
-const DISCOUNT_LARGE_ORDER = 0.10;
+const DISCOUNT_LARGE_ORDER = 0.1;
 const DISCOUNT_PREMIUM = 0.15;
-const DISCOUNT_COMBINED = 0.20;
+const DISCOUNT_COMBINED = 0.2;
 
-function calculateDiscount(amount, isPremium) {
+export function calculateDiscount(amount: number, isPremium: boolean): number {
   const isLargeOrder = amount >= DISCOUNT_THRESHOLD;
 
   if (isLargeOrder && isPremium) return DISCOUNT_COMBINED;
@@ -12,7 +12,7 @@ function calculateDiscount(amount, isPremium) {
   return 0;
 }
 
-function calculateFinalPrice(amount, isPremium = false) {
+export function calculateFinalPrice(amount: number, isPremium = false): number {
   if (typeof amount !== 'number' || amount < 0) {
     throw new TypeError('amount must be a non-negative number');
   }
@@ -20,7 +20,14 @@ function calculateFinalPrice(amount, isPremium = false) {
   return parseFloat((amount * (1 - discount)).toFixed(2));
 }
 
-function getPricingBreakdown(amount, isPremium = false) {
+export interface PricingBreakdown {
+  originalAmount: number;
+  discountRate: number;
+  discountAmount: number;
+  finalPrice: number;
+}
+
+export function getPricingBreakdown(amount: number, isPremium = false): PricingBreakdown {
   const discount = calculateDiscount(amount, isPremium);
   const finalPrice = calculateFinalPrice(amount, isPremium);
   return {
@@ -30,5 +37,3 @@ function getPricingBreakdown(amount, isPremium = false) {
     finalPrice,
   };
 }
-
-module.exports = { calculateDiscount, calculateFinalPrice, getPricingBreakdown };

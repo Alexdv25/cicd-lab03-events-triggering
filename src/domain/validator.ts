@@ -1,7 +1,14 @@
-const VALID_STATUSES = ['pending', 'approved', 'rejected', 'shipped'];
+import { Order, OrderStatus } from './types';
 
-function validateOrder(order) {
-  const errors = [];
+export const VALID_STATUSES: OrderStatus[] = ['pending', 'approved', 'rejected', 'shipped'];
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+export function validateOrder(order: Partial<Order> | null | undefined): ValidationResult {
+  const errors: string[] = [];
 
   if (!order || typeof order !== 'object') {
     return { valid: false, errors: ['Order must be an object'] };
@@ -19,7 +26,7 @@ function validateOrder(order) {
     errors.push('amount must be a positive number');
   }
 
-  if (!VALID_STATUSES.includes(order.status)) {
+  if (!order.status || !VALID_STATUSES.includes(order.status)) {
     errors.push(`status must be one of: ${VALID_STATUSES.join(', ')}`);
   }
 
@@ -29,5 +36,3 @@ function validateOrder(order) {
 
   return { valid: errors.length === 0, errors };
 }
-
-module.exports = { validateOrder, VALID_STATUSES };

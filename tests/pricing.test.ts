@@ -1,4 +1,4 @@
-const { calculateDiscount, calculateFinalPrice, getPricingBreakdown } = require('../src/pricing');
+import { calculateDiscount, calculateFinalPrice, getPricingBreakdown } from '../src/domain/pricing';
 
 describe('calculateDiscount', () => {
   test('no discount for small non-premium order', () => {
@@ -6,8 +6,8 @@ describe('calculateDiscount', () => {
   });
 
   test('10% discount for large order (>= 1000)', () => {
-    expect(calculateDiscount(1000, false)).toBe(0.10);
-    expect(calculateDiscount(1500, false)).toBe(0.10);
+    expect(calculateDiscount(1000, false)).toBe(0.1);
+    expect(calculateDiscount(1500, false)).toBe(0.1);
   });
 
   test('15% discount for premium customer', () => {
@@ -15,8 +15,8 @@ describe('calculateDiscount', () => {
   });
 
   test('20% discount for premium + large order', () => {
-    expect(calculateDiscount(1000, true)).toBe(0.20);
-    expect(calculateDiscount(2000, true)).toBe(0.20);
+    expect(calculateDiscount(1000, true)).toBe(0.2);
+    expect(calculateDiscount(2000, true)).toBe(0.2);
   });
 });
 
@@ -50,7 +50,7 @@ describe('getPricingBreakdown', () => {
   test('returns full breakdown with discount applied', () => {
     const result = getPricingBreakdown(1000, false);
     expect(result.originalAmount).toBe(1000);
-    expect(result.discountRate).toBe(0.10);
+    expect(result.discountRate).toBe(0.1);
     expect(result.discountAmount).toBe(100);
     expect(result.finalPrice).toBe(900);
   });

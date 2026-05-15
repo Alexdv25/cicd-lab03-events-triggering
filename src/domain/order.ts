@@ -1,26 +1,27 @@
-const { validateOrder } = require('./validator');
-const { calculateFinalPrice } = require('./pricing');
+import { calculateFinalPrice } from './pricing';
+import { validateOrder } from './validator';
+import { CreateOrderInput, Order, OrderStatus, AppError } from './types';
 
-const STATUS_TRANSITIONS = {
+const STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pending: ['approved', 'rejected'],
   approved: ['shipped'],
   rejected: [],
   shipped: [],
 };
 
-function createOrder({ id, customerId, items, isPremium = false }) {
+export function createOrder({ id, customerId, items, isPremium = false }: CreateOrderInput): Order {
   if (!id || !customerId || !Array.isArray(items) || items.length === 0) {
-    throw new Error('Missing required order fields');
+    throw new AppError(400, 'Missing required order fields');
   }
 
   const amount = items.reduce((sum, item) => {
     if (typeof item.price !== 'number' || typeof item.quantity !== 'number') {
-      throw new TypeError('Each item must have numeric price and quantity');
+      throw new AppError(400, 'Each item must have numeric price and quantity');
     }
     return sum + item.price * item.quantity;
   }, 0);
 
-  const order = {
+  const order: Order = {
     id,
     customerId,
     items,
@@ -32,22 +33,20 @@ function createOrder({ id, customerId, items, isPremium = false }) {
   };
 
   const { valid, errors } = validateOrder(order);
-  if (!valid) throw new Error(`Invalid order: ${errors.join('; ')}`);
+  if (!valid) throw new AppError(400, `Invalid order: ${errors.join('; ')}`);
 
   return order;
 }
 
-function updateStatus(order, newStatus) {
+export function updateStatus(order: Order, newStatus: OrderStatus): Order {
   const allowed = STATUS_TRANSITIONS[order.status];
-  if (!allowed) throw new Error(`Unknown current status: ${order.status}`);
+  if (!allowed) throw new AppError(409, `Unknown current status: ${order.status}`);
   if (!allowed.includes(newStatus)) {
-    throw new Error(`Cannot transition from '${order.status}' to '${newStatus}'`);
+    throw new AppError(409, `Cannot transition from '${order.status}' to '${newStatus}'`);
   }
   return { ...order, status: newStatus, updatedAt: new Date().toISOString() };
 }
 
-function canShip(order) {
+export function canShip(order: Order): boolean {
   return order.status === 'approved' && order.amount > 0;
 }
-
-module.exports = { createOrder, updateStatus, canShip };
