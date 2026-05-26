@@ -4,12 +4,12 @@ name: CI
 # Right now the workflow runs on every push and every pull_request — no filtering.
 on:
   push:
-      branches:
-        - main
-        - develop
-      paths:
-        - 'src/**'
-        - 'tests/**'
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**'
+      - 'tests/**'
   pull_request:
 
 jobs:
