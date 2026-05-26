@@ -8,7 +8,7 @@ in memory (state resets on restart).
 - Node.js >= 18, TypeScript 5
 - Express 4
 - Jest + ts-jest + supertest (unit + API tests)
-- ESLint (`@typescript-eslint`)!!!!!
+- ESLint (`@typescript-eslint`)!!   !!!
 
 ## Setup
 
