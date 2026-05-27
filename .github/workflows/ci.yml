@@ -1,7 +1,4 @@
 name: CI
-
-# TODO (Lab): upgrade this on: block per the instructions in LAB.md
-# Right now the workflow runs on every push and every pull_request — no filtering.
 on:
   push:
     branches:
@@ -10,8 +7,18 @@ on:
     paths:
       - 'src/**'
       - 'tests/**'
+      
   pull_request:
-
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      
 jobs:
   lint:
     name: Lint & Typecheck
